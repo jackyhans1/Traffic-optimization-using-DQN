@@ -12,9 +12,11 @@ import xml.etree.ElementTree as ET
 import random
 from xml.dom import minidom
 import torch.nn.functional as F
+import torch.multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor
 
-buffer_limit = 50000
-batch_size = 32
+buffer_limit = 100000
+batch_size = 128
 gamma = 0.99
 
 class Qnet(nn.Module):
@@ -221,10 +223,16 @@ class ReplayBuffer:
         # print("r_lst:", r_lst)  # r_lst의 형태 확인
         # print("s_prime_lst:", s_prime_lst)  # s_prime_lst의 형태 확인
 
-        tensor_s = torch.tensor(s_lst, dtype=torch.float).to(device)
-        tensor_a = torch.tensor(a_lst).to(device)
-        tensor_r = torch.tensor(r_lst).to(device)
-        tensor_s_prime = torch.tensor(s_prime_lst, dtype=torch.float).to(device)
+        # tensor_s = torch.tensor(s_lst, dtype=torch.float).to(device)
+        # tensor_a = torch.tensor(a_lst).to(device)
+        # tensor_r = torch.tensor(r_lst).to(device)
+        # tensor_s_prime = torch.tensor(s_prime_lst, dtype=torch.float).to(device)
+
+        # 리스트를 numpy 배열로 변환한 후 텐서로 변환 -> 속도 개선
+        tensor_s = torch.tensor(np.array(s_lst), dtype=torch.float).to(device)
+        tensor_a = torch.tensor(np.array(a_lst), dtype=torch.long).to(device)
+        tensor_r = torch.tensor(np.array(r_lst), dtype=torch.float).to(device)
+        tensor_s_prime = torch.tensor(np.array(s_prime_lst), dtype=torch.float).to(device)
         
         return tensor_s, tensor_a, tensor_r, tensor_s_prime
 
@@ -243,10 +251,12 @@ def main():
   optimizer = optim.Adam(q.parameters(), lr=0.00025)
   memory = ReplayBuffer()
 
+  
+
 
   for episode in range(100):
      #차량 수요 랜덤으로 설정
-    overwrite_route_file(route_dir, 3)
+    # overwrite_route_file(route_dir, 3)
     sumo_cmd = [sumo_binary, "-c", sumocfg_dir, "-r", route_dir, "--no-warnings", "--random"]
 
     traci.start(sumo_cmd)
@@ -279,7 +289,7 @@ def main():
         s_tensor = torch.from_numpy(s).float().to(device)
         if phase == 0 or phase == 2: # 노란불은 고정으로 3초로 해야하니깐
             a = q.sample_action(s_tensor, traffic_time, phase_min_time[phase], epsilon)
-            print(f"a : {a}")
+            # print(f"a : {a}")
 
         #신호 바꾸기
         if a == 1 :
@@ -322,9 +332,9 @@ def main():
         # if memory.size() > 1000:
         #     train(q, q_target, memory, optimizer)
 
-        if step % 100 == 0 and step != 0:
+        if step % 1000 == 0 and step != 0:
             q_target.load_state_dict(q.state_dict())
-            print(f"Step: {step}")
+            print(f"\nEpisode : {episode+1} Step: {step}")
             print(f"reward: {r}")
             print(f"culmulate_waitingTime: {cumulate_waitingTime}")
 
