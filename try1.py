@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,11 +12,10 @@ import xml.etree.ElementTree as ET
 import random
 from xml.dom import minidom
 import torch.nn.functional as F
-import torch.multiprocessing as mp
-from concurrent.futures import ThreadPoolExecutor
+import matplotlib.pyplot as plt
 
-buffer_limit = 100000
-batch_size = 128
+buffer_limit = 50000
+batch_size = 64
 gamma = 0.99
 
 class Qnet(nn.Module):
@@ -39,6 +38,7 @@ class Qnet(nn.Module):
         x = F.relu(self.fc5(x))
         # 출력층 활성화 함수: Sigmoid
         x = torch.sigmoid(self.output(x))
+        # print(f"x : {x}")
         return x
 
     def sample_action(self, obs, traffic_time, phase_min_time, epsilon):
@@ -137,14 +137,6 @@ def get_halted_vehicle_count():
         total_halted_vehicles -= stopped_cars  # 보상에 추가 (음수 값)
 
     return total_halted_vehicles
-    # vehicle_ids = traci.vehicle.getIDList()  # 모든 차량 ID 가져오기
-
-    # for vehicle_id in vehicle_ids:
-    #     speed = traci.vehicle.getSpeed(vehicle_id)  # 차량 속도 확인
-    #     if speed == 0:  # 차량이 정지한 경우
-    #         total_halted_vehicles += 1
-
-    # return total_halted_vehicles
 
 def change_traffic_light_phase(tls_id, phase_index):
     """
@@ -155,197 +147,130 @@ def change_traffic_light_phase(tls_id, phase_index):
     """
     traci.trafficlight.setPhase(tls_id, phase_index)
 
+def train(q, memory, optimizer):
+      
+    s, a, r, s_prime = memory
 
-# def train(q, q_target, memory, optimizer):
-#     s, a, r, s_prime = memory
-#     q_out = q(s)  # (batch_size, action_dim)
+    # NumPy 배열을 PyTorch 텐서로 변환
+    s = torch.from_numpy(s).float().to(device)
+    # a = torch.from_numpy(a).int()
+    r = torch.tensor(r).float().to(device)
+    s_prime = torch.from_numpy(s_prime).float().to(device)
 
-#     # 다음 상태에서의 최대 Q-값을 계산
-#     q_prime_out = q_target(s_prime)  # q_target(s_prime)의 출력 (batch_size, action_dim)
-#     if q_prime_out.dim() == 1:  # 1D 텐서라면 차원 추가
-#         q_prime_out = q_prime_out.unsqueeze(0)  # 차원을 맞추기 위해 unsqueeze(0)
+    # 네트워크 통과
+    q_out = q(s)  # 모든 액션에 대한 Q값
+    q_a = q_out[a]  # 선택된 액션의 Q값
 
-#     max_q_prime = q_prime_out.max(1)[0].unsqueeze(1)  # 최대 Q-값 추출
+    max_q_prime = torch.max(q(s_prime))
+    target = r + gamma * max_q_prime  # Target Q값
 
-#     # 타겟 Q-값 계산 (벨만 방정식)
-#     target = r + 0.99 * max_q_prime
+    loss = torch.nn.functional.mse_loss(q_a, target)
 
-#     # 행동 인덱스를 정수형 텐서로 변환
-#     target = torch.tensor(a, dtype=torch.long)  # a는 행동 인덱스이며, 정수형 텐서로 변환해야 함
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
-#     # CrossEntropyLoss는 예측값(softmax 확률)을 기대합니다.
-#     # q_out은 이미 Q-값으로, CrossEntropyLoss는 softmax를 내부적으로 사용하므로
-#     # 추가적인 softmax 처리 없이 그대로 입력할 수 있습니다.
+    # print(f"loss: {loss.item():.4f}")
 
-#     # 손실 계산 (CrossEntropy)
-#     loss_fn = nn.CrossEntropyLoss()
-#     loss = loss_fn(q_out, target)  # q_out: (batch_size, action_dim), target: (batch_size,)
-
-#     # 역전파 및 최적화
-#     optimizer.zero_grad()
-#     loss.backward()
-#     optimizer.step()
-
-def train(q, q_target, memory, optimizer):
-    for i in range(10):
-        s,a,r,s_prime = memory.sample(batch_size)
-
-        q_out = q(s)
-        q_a = q_out.gather(1,a)
-        max_q_prime = q_target(s_prime).max(1)[0].unsqueeze(1)
-        target = r + gamma * max_q_prime
-        loss = F.cross_entropy(q_a, target)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-class ReplayBuffer:
-    def __init__(self):
-        self.buffer = collections.deque(maxlen=buffer_limit)
-    
-    def put(self, transition):
-        self.buffer.append(transition)
-    
-    def sample(self, n):
-        mini_batch = random.sample(self.buffer, n)
-        s_lst, a_lst, r_lst, s_prime_lst = [], [], [], []
-
-        for trainsition in mini_batch:
-            s, a, r, s_prime = trainsition
-            s_lst.append(s)
-            a_lst.append([a])
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-        
-        # print("s_lst:", s_lst)  # s_lst의 형태 확인
-        # print("a_lst:", a_lst)  # a_lst의 형태 확인
-        # print("r_lst:", r_lst)  # r_lst의 형태 확인
-        # print("s_prime_lst:", s_prime_lst)  # s_prime_lst의 형태 확인
-
-        # tensor_s = torch.tensor(s_lst, dtype=torch.float).to(device)
-        # tensor_a = torch.tensor(a_lst).to(device)
-        # tensor_r = torch.tensor(r_lst).to(device)
-        # tensor_s_prime = torch.tensor(s_prime_lst, dtype=torch.float).to(device)
-
-        # 리스트를 numpy 배열로 변환한 후 텐서로 변환 -> 속도 개선
-        tensor_s = torch.tensor(np.array(s_lst), dtype=torch.float).to(device)
-        tensor_a = torch.tensor(np.array(a_lst), dtype=torch.long).to(device)
-        tensor_r = torch.tensor(np.array(r_lst), dtype=torch.float).to(device)
-        tensor_s_prime = torch.tensor(np.array(s_prime_lst), dtype=torch.float).to(device)
-        
-        return tensor_s, tensor_a, tensor_r, tensor_s_prime
-
-    def size(self):
-        return len(self.buffer)
 
 def main():
-  sumo_binary = "/usr/bin/sumo"
-  sumocfg_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/case_a.sumocfg"
-  route_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/route.rou.xml"
+    sumo_binary = "/usr/bin/sumo"
+    sumocfg_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/case_a.sumocfg"
+    route_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/route.rou.xml"
 
-  q = Qnet(18,2).to(device) # 8 + 7 + 1
-  q_target = Qnet(18,2).to(device)
-  q_target.load_state_dict(q.state_dict())
+    result_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/result"
+    os.makedirs(result_dir, exist_ok=True)
 
-  optimizer = optim.Adam(q.parameters(), lr=0.00025)
-  memory = ReplayBuffer()
+    q = Qnet(18,2).to(device) # 8 + 7 + 1
+    optimizer = optim.Adam(q.parameters(), lr=0.00025)
 
-  
-
-
-  for episode in range(100):
-     #차량 수요 랜덤으로 설정
     # overwrite_route_file(route_dir, 3)
-    sumo_cmd = [sumo_binary, "-c", sumocfg_dir, "-r", route_dir, "--no-warnings", "--random"]
+    episodes = 30
+    episode_cumulative_waiting_times = []
 
-    traci.start(sumo_cmd)
+    for episode in range(episodes):
+        #차량 수요 랜덤으로 설정
+        overwrite_route_file(route_dir, 3)
+        sumo_cmd = [sumo_binary, "-c", sumocfg_dir, "-r", route_dir, "--no-warnings", "--random"]
+        traci.start(sumo_cmd)
 
+        num_steps = 10001
 
-    num_steps = 10000
+        #dt 측정하기 위함
+        traffic_time = 0
 
+        #신호 phase
+        phase = 0
 
-    #dt 측정하기 위함
-    current_phase = 0
-    traffic_time = 0
+        #신호 phase 당 최소 시간
+        phase_min_time = [30, 3, 10, 3]
 
-    #신호 phase
-    phase = 0
+        #관찰값 초기화
+        s = [0] * 18
+        s = np.array(s)
+        # s = torch.from_numpy(s).float()
 
-    #신호 phase 당 최소 시간
-    phase_min_time = [30, 3, 10, 3]
+        #누적 대기시간
+        cumulate_waitingTime = 0
 
-    #관찰값 초기화
-    s = [0] * 18
-    s = np.array(s)
-    # s = torch.from_numpy(s).float()
+        epsilon = max(0.01, 0.08 - 0.01 * (episode/200))
 
-    #누적 대기시간
-    cumulate_waitingTime = 0
+        for step in range(num_steps):
+            # s = torch.from_numpy(s).float()
+            if phase == 0 or phase == 2: # 노란불은 고정으로 3초로 해야하니깐
+                a = q.sample_action(torch.from_numpy(s).float().to(device), traffic_time, phase_min_time[phase], epsilon)
+                # print(f"a : {a}")
 
-    epsilon = max(0.01, 0.08 - 0.01 * (episode/200))
+            #신호 바꾸기
+            if a == 1 :
+                phase = (phase + 1) % 4
+                traffic_time = 0
+                change_traffic_light_phase("J6", phase)
 
-    for step in range(num_steps):
-        s_tensor = torch.from_numpy(s).float().to(device)
-        if phase == 0 or phase == 2: # 노란불은 고정으로 3초로 해야하니깐
-            a = q.sample_action(s_tensor, traffic_time, phase_min_time[phase], epsilon)
-            # print(f"a : {a}")
+            traci.simulationStep()
+            traffic_time += 1
 
-        #신호 바꾸기
-        if a == 1 :
-          phase = (phase + 1) % 4
-          traffic_time = 0
-          change_traffic_light_phase("J6", phase)
+            s_prime = np.array([])
+            s_prime = np.concatenate([
+                get_halted_vehicles_vector(traci.lane.getIDList()),
+                get_traffic_light_vector("J6")
+            ])
+            
+            s_prime = np.append(s_prime, traffic_time)
 
-        traci.simulationStep()
-        traffic_time += 1
+            r = get_halted_vehicle_count()
 
-        s_prime = np.array([])
-        s_prime = np.concatenate([
-          get_halted_vehicles_vector(traci.lane.getIDList()),
-          get_traffic_light_vector("J6")
-        ])
-        s_prime = np.append(s_prime, traffic_time)
-        # s_prime = torch.from_numpy(s_prime).float()
-        # print(f"s_prime: {s_prime}")
-        # s_prime = np.array(s_prime)
-        # if current_phase == traci.trafficlight.getPhase("J6"):
-        #   start_time += 1
-        # else:
-        #   start_time = 0
-        # phase_info = traci.trafficlight.getPhase("J6")
-        # print(f"traffic_phase : {phase_info}")
+            train(q, (s,a,r,s_prime), optimizer)
 
-        
+            s = s_prime
 
-        r = get_halted_vehicle_count()
-        memory.put((s,a,r,s_prime))
-        s = s_prime
-
-        cumulate_waitingTime += r * (-1)
-        # print(f"cumulate_waitingTime{cumulate_waitingTime}")
-
-        if memory.size() > 2000:
-            train(q, q_target, memory, optimizer)
-        # # q_target.load_state_dict(q.state_dict())
-
-        # if memory.size() > 1000:
-        #     train(q, q_target, memory, optimizer)
-
-        if step % 1000 == 0 and step != 0:
-            q_target.load_state_dict(q.state_dict())
-            print(f"\nEpisode : {episode+1} Step: {step}")
-            print(f"reward: {r}")
-            print(f"culmulate_waitingTime: {cumulate_waitingTime}")
+            cumulate_waitingTime += r * (-1)
+            
+            if step == 10000:  # 10000번째 step에서 cumulate_waitingTime 저장
+                episode_cumulative_waiting_times.append(cumulate_waitingTime)
+            
+            if step % 1000 == 0 and step != 0:
+                print(f"\n Episode : {episode} Step: {step}")
+                print(f"reward: {r}")
+                print(f"culmulate_waitingTime: {cumulate_waitingTime}")
 
     
             
     traci.close()
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, episodes + 1), episode_cumulative_waiting_times, color='red', marker='o', linestyle='-')
+    plt.xlabel("Episode")
+    plt.ylabel("Cumulative waiting time (s)")
+    plt.title("Cumulative Waiting Time per Episode")
+    plt.grid()
+    
+    # 그래프 저장
+    output_path = os.path.join(result_dir, "cumulative_waiting_time_random2.png")
+    plt.savefig(output_path)
+    plt.close()
+
+    print(f"Graph saved at {output_path}")
 
 if __name__ == '__main__':
     main()
-
-# traci.close()
-
-
-
