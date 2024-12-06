@@ -170,8 +170,8 @@ def main():
     result_dir = "/workspace/UndergraduateResearchAssistant/GraduateProject/sumo/4ways_result1"
     os.makedirs(result_dir, exist_ok=True)
 
-    q = Qnet(29, 2).to(device) 
-    q_target = Qnet(29, 2).to(device)
+    q = Qnet(57, 2).to(device) #44+12+1 = 57
+    q_target = Qnet(57, 2).to(device)
     q_target.load_state_dict(q.state_dict())
 
     memory = ReplayBuffer(buffer_limit)
@@ -191,7 +191,7 @@ def main():
         num_steps = 10001
         traffic_time = 0
         phase = 0
-        phase_min_time = [20, 3, 10, 3, 20, 3, 10, 3]
+        phase_min_time = [10, 3, 20, 3, 10, 3, 20, 3]
         s = np.zeros(18)
         cumulate_waitingTime = 0
         total_vehicles = 0  # 추가: 에피소드 동안의 총 차량 수
@@ -211,6 +211,9 @@ def main():
 
             traci.simulationStep()
             traffic_time += 1
+            
+            print(get_halted_vehicles_vector(traci.lane.getIDList()))
+            print(get_traffic_light_vector("J1"))
 
             s_prime = np.concatenate([
                 get_halted_vehicles_vector(traci.lane.getIDList()),
