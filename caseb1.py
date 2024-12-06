@@ -211,9 +211,6 @@ def main():
 
             traci.simulationStep()
             traffic_time += 1
-            
-            print(get_halted_vehicles_vector(traci.lane.getIDList()))
-            print(get_traffic_light_vector("J1"))
 
             s_prime = np.concatenate([
                 get_halted_vehicles_vector(traci.lane.getIDList()),
