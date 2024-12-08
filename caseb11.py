@@ -230,8 +230,6 @@ def main():
 
             r = calculate_reward()
 
-            
-
             if episode > 0:
                 memory.put((s, a, r, s_prime, done))
                 step_loss = train(q, q_target, memory, optimizer)
