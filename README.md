@@ -18,10 +18,15 @@ This project aims to optimize traffic signal control at a four-way intersection 
 - **Output**: Signal actions (maintain current signal or switch to the next signal).
 - **Training Environment**: Runs on Ubuntu 20.04 with GPU acceleration (NVIDIA RTX 3090) for fast training.
 
-## Installation and Execution
+## Results
 
-### Prerequisites
+- **Initial Average Waiting Time**: 61 seconds.
+- **Final Average Waiting Time After Training**: 33 seconds.
+- **Average Waiting Time Reduction**: 46%.
+- The agent stabilizes after approximately 10 episodes and consistently learns efficient signal control strategies.
 
-1. **Install SUMO**:
-   ```bash
-   sudo apt-get install sumo sumo-tools sumo-doc
+## Future Work
+
+- Extend the system to optimize multiple intersections with cooperative agents.
+- Integrate additional real-world factors such as weather, pedestrian density, or road conditions.
+- Explore advanced reinforcement learning algorithms for further optimization.
