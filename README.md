@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project aims to optimize traffic signal control at a four-way intersection using Deep Q-Networks (DQN) and SUMO (Simulation of Urban MObility). By applying reinforcement learning, the system learns optimal traffic signal policies to minimize vehicle and pedestrian waiting times and reduce traffic congestion. The agent interacts with the SUMO environment, learning in real-time to optimize the control of traffic lights based on various states and actions.
+This project aims to optimize traffic signal control at a four-way intersection using Deep Q-Networks (DQN) and SUMO (Simulation of Urban MObility). By applying reinforcement learning, the system learns optimal traffic signal policies to minimize vehicle and pedestrian waiting times and reduce traffic congestion. The agent interacts with the SUMO environment, learning in real-time to optimize the control of traffic lights based on various states and actions. More information of SUMO : https://sumo.dlr.de/docs/index.html
 
 ## Key Features
 
