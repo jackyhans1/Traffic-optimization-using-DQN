@@ -22,7 +22,7 @@ This project aims to optimize traffic signal control at a four-way intersection 
 
 - **Initial Average Waiting Time**: 61 seconds.
 - **Final Average Waiting Time After Training**: 33 seconds.
-- **Average Waiting Time Reduction**: 46%.
+- **Average Waiting Time Reduction**: 46%!
 - The agent stabilizes after approximately 10 episodes and consistently learns efficient signal control strategies.
 
 ## Future Work
